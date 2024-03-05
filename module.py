@@ -6,7 +6,8 @@ import torch.optim as optim
 from collections import namedtuple
 import numpy as np
 import random
-
+from tqdm import tqdm
+import os
 
 
 class ConnectFourEnvironment:
@@ -76,15 +77,33 @@ class ConnectFourEnvironment:
 
         self.make_move(action)
         state = self.get_state()
-        done = self.get_winner() != 0 or not any(self.board[0, :] == 0)  # Check for a winner or a full board
-        return state, self.current_player, done
+        
+        winner = self.get_winner()
+        done = winner != 0 or not any(self.board[0, :] == 0)  # Check for a winner or a full board
+                
+        if not done:
+            reward = 0.0
+        elif winner == 0:
+            reward = 0.0  # It's a tie
+        elif self.current_player == 1:
+            if winner == 1:
+                reward = 1.0  # Player 1 won
+            elif winner == 2:
+                reward = -1.0  # Player 2 won
+        elif self.current_player == 2:
+            if winner == 1:
+                reward = -1.0  # Player 1 won
+            elif winner == 2:
+                reward = 1.0  # Player 2 won
+        
+        return state, reward, done
     
     def display_board(self):
         # Display column indices
         print(" ", end=" ")
         for col in range(self.cols):
             print(col, end=" ")
-        print("\n+-----------------+")
+        print("\n+---------------+")
 
         # Display the board
         for row in range(self.rows):
@@ -93,34 +112,37 @@ class ConnectFourEnvironment:
                 print(self.board[row, col], end=" ")
             print("|")
 
-        print("+-----------------+")
+        print("+---------------+")
         
 
 class DQN(nn.Module):
     def __init__(self):
         super(DQN, self).__init__()
-        self.fc1 = nn.Linear(6 * 7, 128)
+        self.fc1 = nn.Linear(6 * 7, 256)
         self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(128, 64)
-        self.fc3 = nn.Linear(64, 7)
+        self.fc2 = nn.Linear(256, 256)
+        self.fc3 = nn.Linear(256, 128)
+        self.fc4 = nn.Linear(128, 7)
 
     def forward(self, x):
         x = x.view(-1, 6 * 7)
         x = self.relu(self.fc1(x))
         x = self.relu(self.fc2(x))
-        x = self.fc3(x)
+        x = self.relu(self.fc3(x))
+        x = self.fc4(x)
         return x
 
 
 Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward'))
 
 class DQNAgent:
-    def __init__(self, state_size, action_size, gamma=0.99, epsilon=0.1):
+    def __init__(self, state_size, action_size, gamma=0.99):
         self.state_size = state_size
         self.action_size = action_size
-        self.gamma = gamma
-        self.epsilon = epsilon
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # self.epsilon = epsilon
+        # self.gamma = gamma
+        # self.gamma = torch.tensor(gamma, device=self.device)
 
         # Define the Q-networks
         self.policy_net = DQN().to(self.device)
@@ -134,10 +156,10 @@ class DQNAgent:
         # Experience Replay Memory
         self.memory = []
 
-    def select_action(self, state, env):
+    def select_action(self, state, env, epsilon):
         valid_actions = env.get_valid_actions()
-        print(valid_actions)
-        if random.random() < self.epsilon:
+        # print(valid_actions)
+        if random.random() < epsilon:
             idx = np.nonzero(valid_actions == 0)[0]
             return torch.tensor(random.choice(idx), dtype=torch.long).to(self.device)
         else:
@@ -146,7 +168,7 @@ class DQNAgent:
                 q_values = self.policy_net(state).cpu().numpy()
                 q_values[0][valid_actions == 1] = float('-inf')
 
-                print(q_values)
+                # print(q_values)
                 return torch.tensor(np.argmax(q_values), dtype=torch.long).to(self.device)
 
 
@@ -160,9 +182,9 @@ class DQNAgent:
         transitions = random.sample(self.memory, batch_size)
         batch = Transition(*zip(*transitions))
 
-        state_batch = torch.FloatTensor(batch.state).to(self.device)
+        state_batch = torch.FloatTensor(np.array(batch.state)).to(self.device)
         action_batch = torch.LongTensor(batch.action).to(self.device)
-        next_state_batch = torch.FloatTensor(batch.next_state).to(self.device)
+        next_state_batch = torch.FloatTensor(np.array(batch.next_state)).to(self.device)
         reward_batch = torch.FloatTensor(batch.reward).to(self.device)
 
         q_values = self.policy_net(state_batch).gather(1, action_batch.unsqueeze(1))
@@ -178,3 +200,12 @@ class DQNAgent:
 
     def update_target_network(self):
         self.target_net.load_state_dict(self.policy_net.state_dict())
+
+class RandomAgent:
+    def __init__(self, action_size):
+        self.action_size = action_size
+
+    def select_action(self, env):
+        valid_actions = env.get_valid_actions()
+        idx = np.nonzero(valid_actions == 0)[0]
+        return random.choice(idx)
