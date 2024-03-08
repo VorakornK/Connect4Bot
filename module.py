@@ -6,8 +6,23 @@ import torch.optim as optim
 from collections import namedtuple
 import numpy as np
 import random
-from tqdm import tqdm
-import os
+
+
+
+class DQN(nn.Module):
+    def __init__(self):
+        super(DQN, self).__init__()
+        self.fc1 = nn.Linear(6 * 7, 64)
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(64, 64)
+        self.fc3 = nn.Linear(64, 7)
+
+    def forward(self, x):
+        x = x.view(-1, 6 * 7)
+        x = self.relu(self.fc1(x))
+        x = self.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
 
 
 class ConnectFourEnvironment:
@@ -114,23 +129,6 @@ class ConnectFourEnvironment:
 
         print("+---------------+")
         
-
-class DQN(nn.Module):
-    def __init__(self):
-        super(DQN, self).__init__()
-        self.fc1 = nn.Linear(6 * 7, 256)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(256, 256)
-        self.fc3 = nn.Linear(256, 128)
-        self.fc4 = nn.Linear(128, 7)
-
-    def forward(self, x):
-        x = x.view(-1, 6 * 7)
-        x = self.relu(self.fc1(x))
-        x = self.relu(self.fc2(x))
-        x = self.relu(self.fc3(x))
-        x = self.fc4(x)
-        return x
 
 
 Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward'))
