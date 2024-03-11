@@ -36,20 +36,21 @@ class ConnectFourEnvironment:
         self.board = np.zeros((self.rows, self.cols), dtype=int)
         self.current_player = 1
 
-    def get_valid_actions(self):
+    def get_invalid_actions(self):
         return np.array([0 if self.board[0, col] == 0 else 1 for col in range(self.cols)])
 
     def is_valid_action(self, action):
         if action < 0 or action >= self.cols:
             return False
-        return self.get_valid_actions()[action] == 0
+        return self.get_invalid_actions()[action] == 0
 
-    def make_move(self, action):
+    def make_move(self, board, action, player=None):
+        if player is None:
+            player = self.current_player
         for row in range(self.rows - 1, -1, -1):
-            if self.board[row, action] == 0:
-                self.board[row, action] = self.current_player
+            if board[row, action] == 0:
+                board[row, action] = player
                 break
-        self.current_player = 3 - self.current_player  # Switch player
 
     def get_state(self):
         return self.board.copy()
@@ -61,59 +62,75 @@ class ConnectFourEnvironment:
                     return player
         return 0
 
-    def get_winner(self):
+    def get_winner(self, board=None):
+        if board is None:
+            board = self.board
         # Check for a winner in rows, columns, and diagonals
         for i in range(self.rows):
-            row_result = self.check_line(self.board[i, :])
+            row_result = self.check_line(board[i, :])
             if row_result:
                 return row_result
 
         for j in range(self.cols):
-            col_result = self.check_line(self.board[:, j])
+            col_result = self.check_line(board[:, j])
             if col_result:
                 return col_result
 
         for i in range(self.rows - 3):
             for j in range(self.cols - 3):
-                diag_result = self.check_line(self.board[i:i + 4, j:j + 4].diagonal())
+                diag_result = self.check_line(board[i:i + 4, j:j + 4].diagonal())
                 if diag_result:
                     return diag_result
 
-                rev_diag_result = self.check_line(np.fliplr(self.board[i:i + 4, j:j + 4]).diagonal())
+                rev_diag_result = self.check_line(np.fliplr(board[i:i + 4, j:j + 4]).diagonal())
                 if rev_diag_result:
                     return rev_diag_result
 
         return 0  # No winner yet
-
+    
+    def find_opponent_win(self, player):
+        invalid_moves = self.get_invalid_actions()
+        for action, invalid in enumerate(invalid_moves):
+            if invalid == 1:
+                continue
+            temp_board = self.board.copy()
+            self.make_move(temp_board, action, player)
+            if self.get_winner(temp_board) == player:
+                return action
+        return -1
+            
+    
     def step(self, action):
         if not self.is_valid_action(action):
             print("Invalid action:", action)
             raise ValueError("Invalid action. Please choose a valid action.")
+        
+        opponent_win = self.find_opponent_win(3 - self.current_player)
 
-        self.make_move(action)
+        self.make_move(self.board, action)
         state = self.get_state()
         
         winner = self.get_winner()
         done = winner != 0 or not any(self.board[0, :] == 0)  # Check for a winner or a full board
-                
-        if not done:
-            reward = 0.0
+        
+        reward = 0.0
+    
+        if opponent_win == action:
+            reward += 1.0 # Prevent opponent from winning
+        if opponent_win != -1 and opponent_win != action:
+            reward += -100.0
         elif winner == 0:
-            reward = 0.0  # It's a tie
-        elif self.current_player == 1:
-            if winner == 1:
-                reward = 1.0  # Player 1 won
-            elif winner == 2:
-                reward = -1.0  # Player 2 won
-        elif self.current_player == 2:
-            if winner == 1:
-                reward = -1.0  # Player 1 won
-            elif winner == 2:
-                reward = 1.0  # Player 2 won
+            reward += -2.0  # It's a tie
+        elif winner == self.current_player:
+            reward += 2.0
+                
+        self.current_player = 3 - self.current_player
         
         return state, reward, done
     
-    def display_board(self):
+    def display_board(self, board=None):
+        if board is None:
+            board = self.board
         # Display column indices
         print(" ", end=" ")
         for col in range(self.cols):
@@ -124,7 +141,7 @@ class ConnectFourEnvironment:
         for row in range(self.rows):
             print("|", end=" ")
             for col in range(self.cols):
-                print(self.board[row, col], end=" ")
+                print(board[row, col], end=" ")
             print("|")
 
         print("+---------------+")
@@ -155,7 +172,7 @@ class DQNAgent:
         self.memory = []
 
     def select_action(self, state, env, epsilon):
-        valid_actions = env.get_valid_actions()
+        valid_actions = env.get_invalid_actions()
         # print(valid_actions)
         if random.random() < epsilon:
             idx = np.nonzero(valid_actions == 0)[0]
@@ -204,6 +221,6 @@ class RandomAgent:
         self.action_size = action_size
 
     def select_action(self, env):
-        valid_actions = env.get_valid_actions()
+        valid_actions = env.get_invalid_actions()
         idx = np.nonzero(valid_actions == 0)[0]
         return random.choice(idx)

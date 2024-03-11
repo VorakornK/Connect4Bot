@@ -43,7 +43,7 @@ env = ConnectFourEnvironment()
 agent = DQNAgent(state_size=(6, 7), action_size=7)  # Assuming state size is the shape of the board
 
 # Load your trained model state
-agent.policy_net.load_state_dict(torch.load("50000.pth"))
+agent.policy_net.load_state_dict(torch.load("rew05/20000.pth"))
 # agent.policy_net.eval()
 
 # Play a game against the loaded model
