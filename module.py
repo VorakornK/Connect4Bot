@@ -76,6 +76,43 @@ class ConnectFourEnvironment:
                 return 2
         return 0
     
+    def evaluate(self, window, player, board=None):
+        if board is None:
+            board = self.board
+        
+        score = 0
+        opponent = 3 - player
+        
+        player_count = np.count_nonzero(window == player)
+        opponent_count = np.count_nonzero(window == opponent)
+        empty_count = np.count_nonzero(window == 0)
+        
+        if player_count == 4:
+            score += 100
+        elif player_count == 3 and empty_count == 1:
+            score += 5
+        elif player_count == 2 and empty_count == 2:
+            score += 2
+            
+        if opponent_count == 3 and empty_count == 1:
+            score -= 5
+          
+        return score
+    
+    def get_score(self, player, board=None):
+        if board is None:
+            board = self.board
+        score = 0
+        
+        center = [int(i) for i in list(board[:, self.cols // 2])]
+        center_count = center.count(player)
+        score += center_count * 3
+        
+        for line in self.winning_lines:
+            line_values = board[line]
+            score += self.evaluate(line_values, self.current_player)
+        return score
+    
     def get_done(self):
         return self.get_winner() != 0 or not any(self.board[0, :] == 0)
     
@@ -102,16 +139,16 @@ class ConnectFourEnvironment:
         winner = self.get_winner()
         done = self.get_done()
         
-        reward = 0.0
+        reward = self.get_score(self.current_player)
     
-        if opponent_winning_move == action:
-            reward += 100.0 # Prevent opponent from winning
-        if opponent_winning_move != -1 and opponent_winning_move != action:
-            reward += -50.0 # Not Prevent opponent from winning
-        elif winner == 0 and done:
-            reward += -20.0  # It's a tie
-        elif winner == self.current_player:
-            reward += 100.0
+        # if opponent_winning_move == action:
+        #     reward += 100.0 # Prevent opponent from winning
+        # if opponent_winning_move != -1 and opponent_winning_move != action:
+        #     reward += -50.0 # Not Prevent opponent from winning
+        # elif winner == 0 and done:
+        #     reward += -20.0  # It's a tie
+        # elif winner == self.current_player:
+        #     reward += 100.0
                 
         self.current_player = 3 - self.current_player
         
@@ -212,62 +249,9 @@ class RandomAgent:
         return random.choice(idx)
     
 class MinimaxAgent:
-    def __init__(self, player, depth=5):
-        self.player = player
-        self.depth = depth
+    def __init__(self):
+        pass
 
-    def select_action(self, env):
-        _, action = self.minimax(env, self.depth, -np.inf, np.inf, True)
+    def select_action(self, state, env):
+        _, action = self.minimax(state, env, depth=5, maximizingPlayer=True)
         return action
-
-    def minimax(self, env, depth, alpha, beta, maximizingPlayer):
-        valid_locations = 1 - env.get_invalid_actions()
-        is_terminal = env.get_done()
-
-        if depth == 0 or is_terminal:
-            if is_terminal:
-                if env.winning_move(self.player):
-                    return None, 100000000000000
-                elif env.winning_move(3 - self.player):
-                    return None, -10000000000000
-                else:
-                    return None, 0
-            else:
-                return None, env.score_position(self.player)
-
-        if maximizingPlayer:
-            value = -math.inf
-            column = random.choice(valid_locations)
-
-            for col in valid_locations:
-                row = env.get_next_open_row(col)
-                new_board = env.copy_and_make_move(board, row, col, self.player)
-                _, new_score = self.minimax(new_board, depth - 1, alpha, beta, False)
-
-                if new_score > value:
-                    value = new_score
-                    column = col
-
-                alpha = max(alpha, value)
-                if alpha >= beta:
-                    break
-
-            return column, value
-        else:
-            value = math.inf
-            column = random.choice(valid_locations)
-
-            for col in valid_locations:
-                row = env.get_next_open_row(col)
-                new_board = env.copy_and_make_move(board, row, col, 3 - self.player)
-                _, new_score = self.minimax(new_board, depth - 1, alpha, beta, True)
-
-                if new_score < value:
-                    value = new_score
-                    column = col
-
-                beta = min(beta, value)
-                if alpha >= beta:
-                    break
-
-            return column, value
