@@ -10,17 +10,15 @@ import random
 
 
 class DQN(nn.Module):
-    def __init__(self):
+    def __init__(self, input_size = 42, num_actions = 7):
         super(DQN, self).__init__()
-        self.fc1 = nn.Linear(6 * 7, 64)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(64, 64)
-        self.fc3 = nn.Linear(64, 7)
+        self.fc1 = nn.Linear(input_size + 1, 128)
+        self.fc2 = nn.Linear(128, 64)
+        self.fc3 = nn.Linear(64, num_actions)
 
     def forward(self, x):
-        x = x.view(-1, 6 * 7)
-        x = self.relu(self.fc1(x))
-        x = self.relu(self.fc2(x))
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
         x = self.fc3(x)
         return x
 
@@ -31,6 +29,20 @@ class ConnectFourEnvironment:
         self.cols = cols
         self.board = np.zeros((self.rows, self.cols), dtype=int)
         self.reset()
+        
+        self.winning_lines = []
+        for i in range(self.rows):
+            for j in range(self.cols - 3):
+                self.winning_lines.append(([i for _ in range(4)], [j + k for k in range(4)]))
+        for i in range(self.rows - 3):
+            for j in range(self.cols):
+                self.winning_lines.append(([i + k for k in range(4)], [j for _ in range(4)]))
+        for i in range(self.rows - 3):
+            for j in range(self.cols - 3):
+                self.winning_lines.append(([i, i + 1, i + 2, i + 3], [j, j + 1, j + 2, j + 3]))
+        for i in range(3, self.rows):
+            for j in range(self.cols - 3):
+                self.winning_lines.append(([i, i - 1, i - 2, i - 3], [j, j + 1, j + 2, j + 3]))
 
     def reset(self):
         self.board = np.zeros((self.rows, self.cols), dtype=int)
@@ -40,89 +52,66 @@ class ConnectFourEnvironment:
         return np.array([0 if self.board[0, col] == 0 else 1 for col in range(self.cols)])
 
     def is_valid_action(self, action):
-        if action < 0 or action >= self.cols:
-            return False
-        return self.get_invalid_actions()[action] == 0
+        return 0 <= action < self.cols and self.board[0, action] == 0
 
     def make_move(self, board, action, player=None):
         if player is None:
             player = self.current_player
-        for row in range(self.rows - 1, -1, -1):
-            if board[row, action] == 0:
-                board[row, action] = player
-                break
+            
+        row = np.argmax(board[::-1, action] == 0)
+        row = self.rows - 1 - row
+        board[row, action] = player
 
     def get_state(self):
-        return self.board.copy()
-
-    def check_line(self, line):
-        for player in [1, 2]:
-            for i in range(len(line) - 3):
-                if np.all(line[i:i + 4] == player):
-                    return player
-        return 0
+        return np.append(self.board.flatten(), self.current_player)
 
     def get_winner(self, board=None):
         if board is None:
             board = self.board
-        # Check for a winner in rows, columns, and diagonals
-        for i in range(self.rows):
-            row_result = self.check_line(board[i, :])
-            if row_result:
-                return row_result
-
-        for j in range(self.cols):
-            col_result = self.check_line(board[:, j])
-            if col_result:
-                return col_result
-
-        for i in range(self.rows - 3):
-            for j in range(self.cols - 3):
-                diag_result = self.check_line(board[i:i + 4, j:j + 4].diagonal())
-                if diag_result:
-                    return diag_result
-
-                rev_diag_result = self.check_line(np.fliplr(board[i:i + 4, j:j + 4]).diagonal())
-                if rev_diag_result:
-                    return rev_diag_result
-
-        return 0  # No winner yet
+        for line in self.winning_lines:
+            line_values = board[line]
+            if np.all(line_values == 1):
+                return 1
+            elif np.all(line_values == 2):
+                return 2
+        return 0
     
-    def find_opponent_win(self, player):
+    def get_done(self):
+        return self.get_winner() != 0 or not any(self.board[0, :] == 0)
+    
+    def find_winning_move(self, player):
         invalid_moves = self.get_invalid_actions()
         for action, invalid in enumerate(invalid_moves):
-            if invalid == 1:
-                continue
-            temp_board = self.board.copy()
-            self.make_move(temp_board, action, player)
-            if self.get_winner(temp_board) == player:
-                return action
+            if not invalid:
+                temp_board = self.board.copy()
+                self.make_move(temp_board, action, player)
+                if self.get_winner(temp_board) == player:
+                    return action
         return -1
             
     
     def step(self, action):
         if not self.is_valid_action(action):
-            print("Invalid action:", action)
             raise ValueError("Invalid action. Please choose a valid action.")
         
-        opponent_win = self.find_opponent_win(3 - self.current_player)
+        opponent_winning_move = self.find_winning_move(3 - self.current_player)
 
         self.make_move(self.board, action)
         state = self.get_state()
         
         winner = self.get_winner()
-        done = winner != 0 or not any(self.board[0, :] == 0)  # Check for a winner or a full board
+        done = self.get_done()
         
         reward = 0.0
     
-        if opponent_win == action:
-            reward += 1.0 # Prevent opponent from winning
-        if opponent_win != -1 and opponent_win != action:
-            reward += -100.0
-        elif winner == 0:
-            reward += -2.0  # It's a tie
+        if opponent_winning_move == action:
+            reward += 100.0 # Prevent opponent from winning
+        if opponent_winning_move != -1 and opponent_winning_move != action:
+            reward += -50.0 # Not Prevent opponent from winning
+        elif winner == 0 and done:
+            reward += -20.0  # It's a tie
         elif winner == self.current_player:
-            reward += 2.0
+            reward += 100.0
                 
         self.current_player = 3 - self.current_player
         
@@ -172,19 +161,16 @@ class DQNAgent:
         self.memory = []
 
     def select_action(self, state, env, epsilon):
-        valid_actions = env.get_invalid_actions()
-        # print(valid_actions)
+        invalid_actions = env.get_invalid_actions()
         if random.random() < epsilon:
-            idx = np.nonzero(valid_actions == 0)[0]
+            idx = np.nonzero(invalid_actions == 0)[0]
             return torch.tensor(random.choice(idx), dtype=torch.long).to(self.device)
         else:
             with torch.no_grad():
                 state = torch.FloatTensor(state).to(self.device)
-                q_values = self.policy_net(state).cpu().numpy()
-                q_values[0][valid_actions == 1] = float('-inf')
-
-                # print(q_values)
-                return torch.tensor(np.argmax(q_values), dtype=torch.long).to(self.device)
+                q_values = self.policy_net(state)
+                q_values[invalid_actions == 1] = -np.inf
+                return torch.argmax(q_values).item()
 
 
     def store_transition(self, transition):
@@ -196,7 +182,7 @@ class DQNAgent:
 
         transitions = random.sample(self.memory, batch_size)
         batch = Transition(*zip(*transitions))
-
+        
         state_batch = torch.FloatTensor(np.array(batch.state)).to(self.device)
         action_batch = torch.LongTensor(batch.action).to(self.device)
         next_state_batch = torch.FloatTensor(np.array(batch.next_state)).to(self.device)
@@ -224,3 +210,64 @@ class RandomAgent:
         valid_actions = env.get_invalid_actions()
         idx = np.nonzero(valid_actions == 0)[0]
         return random.choice(idx)
+    
+class MinimaxAgent:
+    def __init__(self, player, depth=5):
+        self.player = player
+        self.depth = depth
+
+    def select_action(self, env):
+        _, action = self.minimax(env, self.depth, -np.inf, np.inf, True)
+        return action
+
+    def minimax(self, env, depth, alpha, beta, maximizingPlayer):
+        valid_locations = 1 - env.get_invalid_actions()
+        is_terminal = env.get_done()
+
+        if depth == 0 or is_terminal:
+            if is_terminal:
+                if env.winning_move(self.player):
+                    return None, 100000000000000
+                elif env.winning_move(3 - self.player):
+                    return None, -10000000000000
+                else:
+                    return None, 0
+            else:
+                return None, env.score_position(self.player)
+
+        if maximizingPlayer:
+            value = -math.inf
+            column = random.choice(valid_locations)
+
+            for col in valid_locations:
+                row = env.get_next_open_row(col)
+                new_board = env.copy_and_make_move(board, row, col, self.player)
+                _, new_score = self.minimax(new_board, depth - 1, alpha, beta, False)
+
+                if new_score > value:
+                    value = new_score
+                    column = col
+
+                alpha = max(alpha, value)
+                if alpha >= beta:
+                    break
+
+            return column, value
+        else:
+            value = math.inf
+            column = random.choice(valid_locations)
+
+            for col in valid_locations:
+                row = env.get_next_open_row(col)
+                new_board = env.copy_and_make_move(board, row, col, 3 - self.player)
+                _, new_score = self.minimax(new_board, depth - 1, alpha, beta, True)
+
+                if new_score < value:
+                    value = new_score
+                    column = col
+
+                beta = min(beta, value)
+                if alpha >= beta:
+                    break
+
+            return column, value

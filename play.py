@@ -3,7 +3,7 @@ import torch
 import os
 import time
 
-AI_number = 1
+AI_number = 2
 
 def play_game_with_model(agent, env):
     env.reset()
@@ -20,7 +20,7 @@ def play_game_with_model(agent, env):
 
         if env.current_player == AI_number:
             # Let the agent choose an action
-            action = agent.select_action(state, env, False)
+            action = agent.select_action(state, env, 0.0)
         else:
             # For human player (player 2), let them input the move
             try:
@@ -34,6 +34,7 @@ def play_game_with_model(agent, env):
         # Take a step in the environment
         next_state, _, done = env.step(action)
         
+        
     os.system("clear")
     # Display the final board
     env.display_board()
@@ -41,9 +42,10 @@ def play_game_with_model(agent, env):
 # Create ConnectFourEnvironment and DQNAgent
 env = ConnectFourEnvironment()
 agent = DQNAgent(state_size=(6, 7), action_size=7)  # Assuming state size is the shape of the board
+# agent = DQNAgent(state_size=(6, 7), action_size=7)  # Assuming state size is the shape of the board
 
 # Load your trained model state
-agent.policy_net.load_state_dict(torch.load("rew05/20000.pth"))
+agent.policy_net.load_state_dict(torch.load("random100000/100000.pth"))
 # agent.policy_net.eval()
 
 # Play a game against the loaded model
