@@ -240,10 +240,10 @@ class DQNAgent:
 
     def select_action(self, state, env, epsilon):
         invalid_actions = env.get_invalid_actions()
-        # opponent = 3 - env.current_player
-        # winning_move = env.find_winning_move(opponent)
-        # if winning_move != -1:
-        #     return torch.tensor(winning_move, dtype=torch.long).to(self.device)
+        opponent = 3 - env.current_player
+        winning_move = env.find_winning_move(opponent)
+        if winning_move != -1:
+            return torch.tensor(winning_move, dtype=torch.long).to(self.device)
         if random.random() < epsilon:
             # idx = np.nonzero(invalid_actions == 0)[0]
             # return torch.tensor(random.choice(idx), dtype=torch.long).to(self.device)
@@ -299,7 +299,7 @@ class NStep_Agent:
         self.n = n
 
     def select_action(self, env):
-        col, _ = minimax(np.flip(env.board, 0), self.n, -np.inf, np.inf, True)
+        col, _ = minimax(np.flip(env.board, 0), self.n, -np.inf, np.inf, True, env.current_player)
         if env.is_valid_action(col):
             return col
         return random.choice(np.nonzero(env.get_invalid_actions() == 0)[0])
