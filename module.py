@@ -166,12 +166,10 @@ class ConnectFourEnvironment:
     def step(self, action):
         if not self.is_valid_action(action):
             raise ValueError("Invalid action. Please choose a valid action.")
-        
         opponent = 3 - self.current_player
-        
-        opponent_winning_move = self.find_winning_move(3 - self.current_player)
+        opponent_winning_move = self.find_winning_move(opponent)
         before_action_score = self.get_score(self.current_player)
-
+        
         self.make_move(self.board, action)
         
         after_action_score = self.get_score(self.current_player)
@@ -186,13 +184,13 @@ class ConnectFourEnvironment:
         if opponent_winning_move != -1 and opponent_winning_move != action:
             reward += -100.0 # Not Prevent opponent from winning
         elif winner == 0 and done:
-            reward +=  20.0  # It's a tie
+            reward += 20.0  # It's a tie
         elif winner == self.current_player:
             reward += 100.0
             
         reward += after_action_score - before_action_score # Reward for making a move
                 
-        self.current_player = 3 - self.current_player
+        self.current_player = opponent
         
         return self.get_state(), reward, done
     
@@ -245,9 +243,9 @@ class DQNAgent:
         if winning_move != -1:
             return torch.tensor(winning_move, dtype=torch.long).to(self.device)
         if random.random() < epsilon:
-            # idx = np.nonzero(invalid_actions == 0)[0]
-            # return torch.tensor(random.choice(idx), dtype=torch.long).to(self.device)
-            return torch.tensor(OneStepAgent.select_action(env), dtype=torch.long).to(self.device)
+            idx = np.nonzero(invalid_actions == 0)[0]
+            return torch.tensor(random.choice(idx), dtype=torch.long).to(self.device)
+            # return torch.tensor(OneStepAgent.select_action(env), dtype=torch.long).to(self.device)
         else:
             with torch.no_grad():
                 state = torch.FloatTensor(state).to(self.device)
